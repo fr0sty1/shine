@@ -31,6 +31,13 @@
 #endif
 #endif
 
+#ifndef SWAB16
+#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2))
+#define SWAB16(x) __builtin_bswap16(x)
+#else
+#define SWAB16(x) ((((x) >> 8) & 0xff) | (((x) & 0xff) << 8))
+#endif
+#endif
 /* #define DEBUG if you want the library to dump info to stdout */
 
 #define PI          3.14159265358979

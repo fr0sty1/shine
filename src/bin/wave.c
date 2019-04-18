@@ -13,7 +13,7 @@
 #include <string.h>
 #include "main.h"
 #include "wave.h"
-
+#include "types.h" //Get SWAB16/32 macros
 /* RISC OS specifics */
 #define WAVE  0xfb1      /* Wave filetype */
 #define DATA  0xffd      /* Data filetype */
@@ -50,6 +50,7 @@ void wave_seek(FILE *file, int has_seek, uint32_t bytes) {
   }
 }
 
+
 unsigned char wave_get_chunk_header(FILE *file, int has_seek, const char id[4], riff_chunk_header_t *header)
 {
   unsigned char found = 0;
@@ -58,6 +59,7 @@ unsigned char wave_get_chunk_header(FILE *file, int has_seek, const char id[4], 
   if (verbose())
     fprintf(stderr, "Looking for chunk '%s'\n", id);
 
+  //this found is never set true
   while(!found) {
     if (fread(header, sizeof(riff_chunk_header_t), 1, file) != 1) {
       if (feof(file))
@@ -66,6 +68,11 @@ unsigned char wave_get_chunk_header(FILE *file, int has_seek, const char id[4], 
         error("Read error");
     }
 
+#ifdef SHINE_BIG_ENDIAN
+  header->length = SWAB32(header->length); 
+#endif
+
+    //header->length must be endian-ed
     /* chunks must be word-aligned, chunk data doesn't need to */
     chunk_length = header->length + header->length % 2;
     if (verbose()) {
@@ -132,6 +139,17 @@ unsigned char wave_open(const char *fname, wave_t *wave, shine_config_t *config,
   if(fread(&fmt_chunk.format, fmt_data, 1, wave->file) != 1)
     error("Read error");
 
+#ifdef SHINE_BIG_ENDIAN
+  fmt_chunk.format = SWAB16(fmt_chunk.format);       /* MS PCM = 1 */
+  fmt_chunk.channels = SWAB16(fmt_chunk.channels);     /* channels, mono = 1, stereo = 2 */
+
+  fmt_chunk.sample_rate = SWAB32(fmt_chunk.sample_rate);  /* samples per second = 44100 */
+  fmt_chunk.byte_rate = SWAB32(fmt_chunk.byte_rate);    /* bytes per second = samp_rate * byte_samp = 176400 */
+
+  fmt_chunk.frame_size = SWAB16(fmt_chunk.frame_size);   /* block align (bytes per sample) = channels * bits_per_sample / 8 = 4 */
+  fmt_chunk.depth      = SWAB16(fmt_chunk.depth);        /* bits per sample = 16 for MS PCM (format specific) */
+#endif
+
   if (verbose())
     fprintf(stderr, "WAVE format: %u\n", fmt_chunk.format);
 
@@ -168,12 +186,6 @@ unsigned char wave_open(const char *fname, wave_t *wave, shine_config_t *config,
 }
 
 #ifdef SHINE_BIG_ENDIAN
-#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 2))
-#define bswap_16(x) __builtin_bswap16(x)
-#else
-#define bswap_16(x) ((((x) >> 8) & 0xff) | (((x) & 0xff) << 8))
-#endif
-
 void swap_buffer(int16_t *sample_buffer, int length)
 {
   int16_t *end = sample_buffer + length;
@@ -187,7 +199,7 @@ void swap_buffer(int16_t *sample_buffer, int length)
       long_ptr++;
       do {
         register uint16_t tmp = *sample_buffer++;
-        sample_buffer[-1] = bswap_16(tmp);
+        sample_buffer[-1] = SWAB16(tmp);
       } while (sample_buffer != (int16_t *)long_ptr);
     }
 
@@ -201,7 +213,7 @@ void swap_buffer(int16_t *sample_buffer, int length)
 
   while (sample_buffer < end) {
     register uint16_t tmp = *sample_buffer++;
-    sample_buffer[-1] = bswap_16(tmp);
+    sample_buffer[-1] = SWAB16(tmp);
   }
 }
 #endif
